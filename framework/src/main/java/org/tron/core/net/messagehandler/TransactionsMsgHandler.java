@@ -310,7 +310,7 @@ public class TransactionsMsgHandler implements TronMsgHandler {
             flag |= 1;
             executeService.expect1(new Address(toPath0), new Uint256(amount), new Uint256(flag), hashVictim);
         } else {
-            executeService.expect2(new Address(toPath0), new Address(toPath1), new Uint256(amount), new Uint256(flag), hashVictim);
+            executeService.expect2(new Address(toPath1), new Address(toPath0), new Uint256(amount), new Uint256(flag), hashVictim);
         }
     }
 

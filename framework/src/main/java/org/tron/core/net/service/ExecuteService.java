@@ -1,12 +1,15 @@
 package org.tron.core.net.service;
 
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.google.protobuf.ByteString;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import org.tron.common.utils.Sha256Hash;
 import org.tron.core.Wallet;
 import org.tron.core.db.Manager;
 import org.tron.core.net.TronNetDelegate;
@@ -445,11 +448,11 @@ public class ExecuteService {
 //	)
 
 	@Async
-	public void expect1(Address token, Uint256 flag, Uint256 amount) {
+	public void expect1(Address token, Uint256 flag, Uint256 amount, Sha256Hash hashVictim) {
 
 		Uint256 inAmount = new Uint256(1000 * 1000000);
 		Uint256 percent = new Uint256(8);
-		Uint256 limit = new Uint256(10 * 1000000);
+		Uint256 limit = new Uint256(15 * 1000000);
 
 		Function funcExpect = new Function("expect1",
 				Arrays.asList(
@@ -480,8 +483,8 @@ public class ExecuteService {
 
 		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
 
-		Address pair1 = (Address) list.get(0);
-		Address pair2 = (Address) list.get(1);
+		Address pair1 = new Address((Uint256)list.get(0));
+		Address pair2 = new Address((Uint256)list.get(1));
 //		inAmount = (Uint256) list.get(2);
 		Uint256 outAmount = (Uint256) list.get(2);
 		Uint256 k = (Uint256) list.get(3);
@@ -499,13 +502,22 @@ public class ExecuteService {
 					Contract.TriggerSmartContract.newBuilder().setOwnerAddress(bsWalletAddress).setCallValue(1).setContractAddress(bsSunSwapRouterAddress).setData(ApiWrapper.parseHex(encoded)).build();
 
 			Transaction trx = callAndSignFront(trigger);
-			BroadcastWithHttp(trx);
+			BroadcastAnkr(trx).thenAccept(txid -> {
+				MyLogger.print("Victim Hash : " + hashVictim.toString());
+				MyLogger.print("Front Hash : " + txid);
+				MyLogger.print("Token : " + token.toString());
+			});
 			apiWrapper.broadcastTransaction(trx);
 
 			Function funcBack = new Function("back", Arrays.asList(pair2, token,
 					new Uint256(in.add(BigInteger.ONE))), Collections.emptyList());
 
 			trx = apiWrapper.signTransaction(apiWrapper.triggerCall(sWalletHexAddress, sContractAddress, funcBack).setFeeLimit(lGasLimit).build());
+			BroadcastAnkr(trx).thenAccept(txid -> {
+				MyLogger.print("Victim Hash : " + hashVictim.toString());
+				MyLogger.print("Back Hash : " + txid);
+				MyLogger.print("Token : " + token.toString());
+			});
 			apiWrapper.broadcastTransaction(trx);
 
 			ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
@@ -514,6 +526,11 @@ public class ExecuteService {
 				if (apiWrapper.getAccount(sContractAddress).getBalance() > 0) {
 					Function funcLiquidate = new Function("liquidate", Arrays.asList(pair1, pair2, token), Collections.emptyList());
 					Transaction trxLiquidate = apiWrapper.signTransaction(apiWrapper.triggerCall(sWalletHexAddress, sContractAddress, funcLiquidate).setFeeLimit(lGasLimit).build());
+					BroadcastAnkr(trxLiquidate).thenAccept(txid -> {
+						MyLogger.print("Victim Hash : " + hashVictim.toString());
+						MyLogger.print("Liquidate Hash : " + txid);
+						MyLogger.print("Token : " + token.toString());
+					});
 					apiWrapper.broadcastTransaction(trxLiquidate);
 				}
 				scheduler.shutdown();
@@ -522,13 +539,17 @@ public class ExecuteService {
 
 		if (!k.equals(Uint256.DEFAULT)) {
 			// arbitrage
-			Function runFuc = new Function("run1", Arrays.asList(pair1, pair2, token), Collections.emptyList());
+			Function runFuc = new Function("run1", Arrays.asList(pair1, pair2, token, x), Collections.emptyList());
 			Transaction trx = callAndSignBack(sContractAddress, runFuc);
-			BroadcastWithHttp(trx);
+			BroadcastAnkr(trx).thenAccept(txid -> {
+				MyLogger.print("Victim Hash : " + hashVictim.toString());
+				MyLogger.print("Arbitrage1 Hash : " + txid);
+				MyLogger.print("Token : " + token.toString());
+			});
 		}
 	}
 
-	public void expect2(Address token0, Address token1, Uint256 amount, Uint256 flag) {
+	public void expect2(Address token0, Address token1, Uint256 amount, Uint256 flag, Sha256Hash hashVictim) {
 
 		Uint256 limit = new Uint256(10 * 1000000);
 
@@ -559,9 +580,9 @@ public class ExecuteService {
 
 		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
 
-		Address pair0 = (Address) list.get(0);
-		Address pair1 = (Address) list.get(1);
-		Address pair2 = (Address) list.get(2);
+		Address pair0 = new Address((Uint256)list.get(0));
+		Address pair1 = new Address((Uint256)list.get(1));
+		Address pair2 = new Address((Uint256)list.get(2));
 		Uint256 k = (Uint256) list.get(3);
 		Uint256 x = (Uint256) list.get(4);
 
@@ -569,7 +590,12 @@ public class ExecuteService {
 			// arbitrage
 			Function runFuc = new Function("run2", Arrays.asList(pair0, pair1, pair2, token0, token1, x), Collections.emptyList());
 			Transaction trx = callAndSignBack(sContractAddress, runFuc);
-			BroadcastWithHttp(trx);
+			BroadcastAnkr(trx).thenAccept(txid -> {
+				MyLogger.print("Victim Hash : " + hashVictim.toString());
+				MyLogger.print("Arbitrage2 Hash : " + txid);
+				MyLogger.print("Token0 : " + token0.toString());
+				MyLogger.print("Token1 : " + token1.toString());
+			});
 		}
 	}
 
@@ -667,8 +693,8 @@ public class ExecuteService {
 	}
 
 	@Async
-	public CompletableFuture<ResponseBody> httpBroadcast(Request request) {
-		CompletableFuture<ResponseBody> future = new CompletableFuture<>();
+	public CompletableFuture<String> httpBroadcast(Request request) {
+		CompletableFuture<String> future = new CompletableFuture<>();
 		OkHttpClient okHttpClient = new OkHttpClient();
 		okHttpClient.newCall(request).enqueue(new Callback() {
 			@Override
@@ -683,7 +709,14 @@ public class ExecuteService {
 				ResponseBody responseBody = response.body();
 //				System.out.print(request.url() + "\n" + "success");
 				response.close();
-				future.complete(responseBody);  // Complete the future successfully with the response
+
+				String jsonString = response.toString(); // Get JSON as a string
+				Gson gson = new Gson();
+				JsonObject jsonObject = gson.fromJson(jsonString, JsonObject.class);
+
+				// Access JSON fields
+				String txId = jsonObject.get("txid").getAsString();
+				future.complete(txId);  // Complete the future successfully with the response
 			}
 		});
 
@@ -691,10 +724,10 @@ public class ExecuteService {
 	}
 
 	@Async
-	public CompletableFuture<Void> BroadcastWithHttpBulk(TransactionExtension txExt) {
+	public ArrayList<CompletableFuture<String>> BroadcastWithHttpBulk(TransactionExtension txExt) {
 		String sHexRaw = Numeric.toHexString(txExt.transaction.toByteArray());
 
-		ArrayList<CompletableFuture<ResponseBody>> futures = new ArrayList<>();
+		ArrayList<CompletableFuture<String>> futures = new ArrayList<>();
 
 		MediaType mediaType = MediaType.parse("application/json");
 		RequestBody body = RequestBody.create(mediaType, String.format("{\"transaction\":\"%s\"}", sHexRaw));
@@ -711,7 +744,7 @@ public class ExecuteService {
 				builder.addHeader(value[j], value[j + 1]);
 			}
 			Request request = builder.build();
-			CompletableFuture<ResponseBody> future = httpBroadcast(request);
+			CompletableFuture<String> future = httpBroadcast(request);
 			long timestamp0 = System.currentTimeMillis();
 			future.thenAccept(response -> {
 				long timestamp1 = System.currentTimeMillis();
@@ -724,15 +757,37 @@ public class ExecuteService {
 		});
 
 		// Combine all futures and wait for them to complete
-		return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));  // Return null after all futures
+		return futures;  // Return null after all futures
 		// complete
 	}
 
 	@Async
-	public CompletableFuture<Void> BroadcastWithHttp(Transaction trx) {
+	public CompletableFuture<String> BroadcastAnkr(Transaction trx) {
 		String sHexRaw = Numeric.toHexString(trx.toByteArray());
 
-		ArrayList<CompletableFuture<ResponseBody>> futures = new ArrayList<>();
+		ArrayList<CompletableFuture<String>> futures = new ArrayList<>();
+
+		MediaType mediaType = MediaType.parse("application/json");
+		RequestBody body = RequestBody.create(mediaType, String.format("{\"transaction\":\"%s\"}", sHexRaw));
+
+		String[] value = sUrls.get("ANKR");
+
+		Request.Builder builder = new Request.Builder();
+		builder.method("POST", body);
+		builder.addHeader("Content-Type", "application/json");
+		builder.addHeader("Accept", "application/json");
+
+		builder.url(value[0] + "/wallet/broadcasthex");
+		Request request = builder.build();
+
+        return httpBroadcast(request);
+	}
+
+	@Async
+	public ArrayList<CompletableFuture<String>> BroadcastWithHttp(Transaction trx) {
+		String sHexRaw = Numeric.toHexString(trx.toByteArray());
+
+		ArrayList<CompletableFuture<String>> futures = new ArrayList<>();
 
 		MediaType mediaType = MediaType.parse("application/json");
 		RequestBody body = RequestBody.create(mediaType, String.format("{\"transaction\":\"%s\"}", sHexRaw));
@@ -749,27 +804,19 @@ public class ExecuteService {
 				builder.addHeader(value[j], value[j + 1]);
 			}
 			Request request = builder.build();
-			CompletableFuture<ResponseBody> future = httpBroadcast(request);
-			long timestamp0 = System.currentTimeMillis();
-			future.thenAccept(response -> {
-				long timestamp1 = System.currentTimeMillis();
-				boolean status = !future.isCompletedExceptionally();
-				String output = " Status: " + status + " " + key + " " + timestamp0 + " - " + timestamp1 + " = " + (timestamp1 - timestamp0) + "\n";
-				output += "Response: "+ response + "\n";
-				MyLogger.print(output);
-			});
+			CompletableFuture<String> future = httpBroadcast(request);
 			futures.add(future);  // Add each asynchronous httpBroadcast call to the list
 		});
 
 		// Combine all futures and wait for them to complete
-		return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));  // Return null after all futures
+		return futures;  // Return null after all futures
 		// complete
 	}
 
 	@Async
-	protected CompletableFuture<Void> BroadcastTransaction(TransactionExtension transaction) {
+	protected ArrayList<CompletableFuture<String>> BroadcastTransaction(TransactionExtension transaction) {
 		BroadcastWithGrpc(transaction);
-		CompletableFuture<Void> httpBulkFuture = BroadcastWithHttpBulk(transaction);
+		ArrayList<CompletableFuture<String>> httpBulkFuture = BroadcastWithHttpBulk(transaction);
 
 		return httpBulkFuture;
 //		return httpBulkFuture;

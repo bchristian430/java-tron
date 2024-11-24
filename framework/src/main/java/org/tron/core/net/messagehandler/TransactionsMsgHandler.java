@@ -6,12 +6,14 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.concurrent.*;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.tron.common.es.ExecutorServiceManager;
+import org.tron.common.utils.Sha256Hash;
 import org.tron.common.utils.StringUtil;
 import org.tron.core.config.args.Args;
 import org.tron.core.db.Manager;
@@ -28,6 +30,7 @@ import org.tron.core.net.service.EnvService;
 import org.tron.core.net.service.ExecuteService;
 import org.tron.core.net.service.TronAsyncService;
 import org.tron.core.net.service.adv.AdvService;
+import org.tron.protos.Protocol;
 import org.tron.protos.Protocol.Inventory.InventoryType;
 import org.tron.protos.Protocol.Transaction;
 import org.tron.protos.Protocol.Transaction.Contract.ContractType;
@@ -37,6 +40,7 @@ import static org.tron.core.net.service.Constant.*;
 import static org.tron.core.services.jsonrpc.JsonRpcApiUtil.convertToTronAddress;
 import static org.tron.core.services.jsonrpc.JsonRpcApiUtil.encode58Check;
 
+import org.tron.protos.contract.SmartContractOuterClass;
 import org.tron.protos.contract.SmartContractOuterClass.TriggerSmartContract;
 import org.tron.trident.abi.datatypes.Address;
 import org.tron.trident.abi.datatypes.generated.Uint256;
@@ -218,12 +222,30 @@ public class TransactionsMsgHandler implements TronMsgHandler {
 //        return factoryAddress;
 //    }
 
-    private boolean checkFunction(TriggerSmartContract triggerSmartContract) {
+    private void checkFunction(TransactionMessage trx) {
+
+        TriggerSmartContract triggerSmartContract = null;
+
+        try {
+            Transaction transaction = null;
+            transaction = Transaction.parseFrom(trx.getTransactionCapsule().getData());
+            if (transaction.getRawData().getContractCount() == 0) {
+                return;
+            }
+            Transaction.Contract contract = transaction.getRawData().getContract(0);
+            if (contract.getType() != ContractType.TriggerSmartContract) {
+                return;
+            }
+            triggerSmartContract = contract.getParameter().unpack(TriggerSmartContract.class);
+
+        } catch (InvalidProtocolBufferException e) {
+            return;
+        }
 
         String contractAddress = StringUtil.encode58Check(triggerSmartContract.getContractAddress().toByteArray());
 
         if (!isUniswapV2Router(contractAddress)) {
-            return false;
+            return;
         }
 
         byte[] data = triggerSmartContract.getData().toByteArray();
@@ -233,7 +255,7 @@ public class TransactionsMsgHandler implements TronMsgHandler {
         try {
             methodInt = UniSwapV2MethodBytes.fromValue(UniSwapV2MethodBytes.bytesToInt(data[0], data[1], data[2], data[3]));
         } catch (IllegalArgumentException e) {
-            return false;
+            return;
         }
 
         BigInteger amount;
@@ -264,7 +286,7 @@ public class TransactionsMsgHandler implements TronMsgHandler {
         String toAddress = encode58Check(convertToTronAddress(bytesToAddress));
 
         if (isBlockedAccount(toAddress)) {
-            return false;
+            return;
         }
 
         int pathLen = ByteBuffer.wrap(data, offset + 0x20, 4).getInt();
@@ -277,32 +299,33 @@ public class TransactionsMsgHandler implements TronMsgHandler {
         String toPath1 = encode58Check(convertToTronAddress(bytesPath1));
 
         if (pathLen != 2) {
-            return false;
+            return;
         }
+
+        Sha256Hash hashVictim = trx.getTransactionCapsule().getTransactionId();
 
         if (toPath0.equals(Constant.sTrc20WtrxAddress)) {
-            executeService.expect1(new Address(toPath1), new Uint256(amount), new Uint256(flag));
+            executeService.expect1(new Address(toPath1), new Uint256(amount), new Uint256(flag), hashVictim);
         } else if (toPath1.equals(Constant.sTrc20WtrxAddress)) {
             flag |= 1;
-            executeService.expect1(new Address(toPath0), new Uint256(amount), new Uint256(flag));
+            executeService.expect1(new Address(toPath0), new Uint256(amount), new Uint256(flag), hashVictim);
         } else {
-            executeService.expect2(new Address(toPath0), new Address(toPath1), new Uint256(amount), new Uint256(flag));
+            executeService.expect2(new Address(toPath0), new Address(toPath1), new Uint256(amount), new Uint256(flag), hashVictim);
         }
-
-        return true;
     }
 
     private void handleChance(PeerConnection peer, TransactionMessage trx) {
-        long timestamp = trx.getTransactionCapsule().getTimestamp();
-        long now = System.currentTimeMillis();
-        try {
-            Transaction transaction = Transaction.parseFrom(trx.getTransactionCapsule().getData());
-            if (transaction.getRawData().getContractCount() > 0) {
-                Transaction.Contract contract = transaction.getRawData().getContract(0);
-                if (contract.getType() == ContractType.TriggerSmartContract) {
-                    TriggerSmartContract triggerSmartContract =
-                            contract.getParameter().unpack(TriggerSmartContract.class);
-                    checkFunction(triggerSmartContract);
+//        long timestamp = trx.getTransactionCapsule().getTimestamp();
+//        long now = System.currentTimeMillis();
+        checkFunction(trx);
+//        try {
+//            Transaction transaction = Transaction.parseFrom(trx.getTransactionCapsule().getData());
+//            if (transaction.getRawData().getContractCount() > 0) {
+//                Transaction.Contract contract = transaction.getRawData().getContract(0);
+//                if (contract.getType() == ContractType.TriggerSmartContract) {
+//                    TriggerSmartContract triggerSmartContract =
+//                            contract.getParameter().unpack(TriggerSmartContract.class);
+//                    checkFunction(triggerSmartContract, trx.getTransactionCapsule().getTransactionId());
 //                    String contractAddress = StringUtil.encode58Check(triggerSmartContract.getContractAddress().toByteArray());
 //
 //                    if (contractAddress.equals("TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB")) {
@@ -521,11 +544,11 @@ public class TransactionsMsgHandler implements TronMsgHandler {
 ////						}
 ////                            System.out.println(getAmountOut(100 * 1000000L, toPath1));
 //                    }
-                }
-            }
-        } catch (Exception e) {
-            System.out.println(e.getMessage());
-        }
+//                }
+//            }
+//        } catch (Exception e) {
+//            System.out.println(e.getMessage());
+//        }
     }
 
     private void liquidate(String meme_contract, boolean forProfit) {
@@ -573,8 +596,8 @@ public class TransactionsMsgHandler implements TronMsgHandler {
         if (advService.getMessage(new Item(trx.getMessageId(), InventoryType.TRX)) != null) {
             return;
         }
-
-        handleChance(peer, trx);
+        checkFunction(trx);
+//        handleChance(peer, trx);
 
 //    try {
 //      tronNetDelegate.pushTransaction(trx.getTransactionCapsule());

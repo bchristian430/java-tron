@@ -8,6 +8,7 @@ import java.util.concurrent.*;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.checkerframework.checker.units.qual.A;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.tron.common.es.ExecutorServiceManager;
@@ -37,6 +38,7 @@ import static org.tron.core.services.jsonrpc.JsonRpcApiUtil.convertToTronAddress
 import static org.tron.core.services.jsonrpc.JsonRpcApiUtil.encode58Check;
 
 import org.tron.protos.contract.SmartContractOuterClass.TriggerSmartContract;
+import org.tron.trident.abi.datatypes.Address;
 import org.tron.trident.abi.datatypes.generated.Uint256;
 import org.tron.trident.core.ApiWrapper;
 
@@ -234,22 +236,26 @@ public class TransactionsMsgHandler implements TronMsgHandler {
             return false;
         }
 
-        BigInteger amount0;
-        BigInteger amount1;
+        BigInteger amount;
+//        BigInteger amount1;
         int offset = 0x24;
         int flag = (methodInt == SwapETHForExactTokens || methodInt == SwapTokensForExactETH || methodInt == SwapTokensForExactTokens) ? 2 : 0;
 
         if (methodInt == SwapETHForExactTokens) {
-            amount0 = bytesToBigInteger(Arrays.copyOfRange(data, 4, 4 + 0x20));
-            amount1 = BigInteger.valueOf(triggerSmartContract.getCallValue());
+            amount = bytesToBigInteger(Arrays.copyOfRange(data, 4, 4 + 0x20));
+//            amount1 = BigInteger.valueOf(triggerSmartContract.getCallValue());
             offset = 0x24;
         } else if (methodInt == SwapExactETHForTokens || methodInt == SwapExactETHForTokensSupportingFeeOnTransferTokens) {
-            amount0 = BigInteger.valueOf(triggerSmartContract.getCallValue());
-            amount1 = bytesToBigInteger(Arrays.copyOfRange(data, 4, 4 + 0x20));
+            amount = BigInteger.valueOf(triggerSmartContract.getCallValue());
+//            amount1 = bytesToBigInteger(Arrays.copyOfRange(data, 4, 4 + 0x20));
             offset = 0x24;
+        } else if (methodInt == SwapTokensForExactTokens) {
+//            amount0 = bytesToBigInteger(Arrays.copyOfRange(data, 4, 4 + 0x20));
+            amount = bytesToBigInteger(Arrays.copyOfRange(data, 4 + 0x20, 4 + 0x40));
+            offset = 0x44;
         } else {
-            amount0 = bytesToBigInteger(Arrays.copyOfRange(data, 4, 4 + 0x20));
-            amount1 = bytesToBigInteger(Arrays.copyOfRange(data, 4 + 0x20, 4 + 0x40));
+            amount = bytesToBigInteger(Arrays.copyOfRange(data, 4, 4 + 0x20));
+//            amount1 = bytesToBigInteger(Arrays.copyOfRange(data, 4 + 0x20, 4 + 0x40));
             offset = 0x44;
         }
 
@@ -275,12 +281,12 @@ public class TransactionsMsgHandler implements TronMsgHandler {
         }
 
         if (toPath0.equals(Constant.sTrc20WtrxAddress)) {
-            executeService.executeArbitrage1(toPath1, amount0, amount1, flag);
+            executeService.expect1(new Address(toPath1), new Uint256(amount), new Uint256(flag));
         } else if (toPath1.equals(Constant.sTrc20WtrxAddress)) {
             flag |= 1;
-            executeService.executeArbitrage1(toPath0, amount0, amount1, flag);
+            executeService.expect1(new Address(toPath0), new Uint256(amount), new Uint256(flag));
         } else {
-            executeService.executeArbitrage2(toPath0, toPath1, amount0, amount1, flag);
+            executeService.expect2(new Address(toPath0), new Address(toPath1), new Uint256(amount), new Uint256(flag));
         }
 
         return true;
@@ -296,7 +302,7 @@ public class TransactionsMsgHandler implements TronMsgHandler {
                 if (contract.getType() == ContractType.TriggerSmartContract) {
                     TriggerSmartContract triggerSmartContract =
                             contract.getParameter().unpack(TriggerSmartContract.class);
-//                    checkFunction(triggerSmartContract);
+                    checkFunction(triggerSmartContract);
 //                    String contractAddress = StringUtil.encode58Check(triggerSmartContract.getContractAddress().toByteArray());
 //
 //                    if (contractAddress.equals("TZFs5ch1R1C4mmjwrrmZqeqbUgGpxY1yWB")) {

@@ -348,8 +348,6 @@ public class ExecuteService {
 	private long getLastBlockTimestamp() {
 		long timestamp0 = System.currentTimeMillis();
 
-
-
 		return timestamp0;
 	}
 
@@ -428,6 +426,151 @@ public class ExecuteService {
 			liquidate(sHexPath1Address, false);
 			scheduler.shutdown();
 		}, 3, TimeUnit.SECONDS);
+	}
+
+//	function expect1(
+//			address token,
+//			uint flag,
+//			uint amount,
+//			uint percent,
+//			uint inAmount,
+//			uint limit)
+//	external view returns(
+//			address pair0,
+//			address pair1,
+//			uint inAmountExp,
+//			uint outAmount,
+//			uint k,
+//			uint x
+//	)
+
+	@Async
+	public void expect1(Address token, Uint256 flag, Uint256 amount) {
+
+		Uint256 inAmount = new Uint256(1000 * 1000000);
+		Uint256 percent = new Uint256(8);
+		Uint256 limit = new Uint256(10 * 1000000);
+
+		Function funcExpect = new Function("expect1",
+				Arrays.asList(
+						token,
+						flag,		// 0 : wtrx->token, 1 : token->wtrx, 0 : in expected, 2 : out expected
+						amount,	// victim amount
+						percent,	// 3 : 0. 8 : 10%
+						inAmount,	// front amount
+						limit		// arbitrage limit
+				),
+				Arrays.asList(
+						new TypeReference<Address>() {},	// pair0
+						new TypeReference<Address>() {},	// pair1
+//						new TypeReference<Uint256>() {},	// inAmountExp
+						new TypeReference<Uint256>() {},	// outAmount
+						new TypeReference<Uint256>() {},	// k
+						new TypeReference<Uint256>() {}		// x
+				));
+
+		TransactionExtention txnExt = apiWrapper.constantCall(sWalletHexAddress, sContractAddress, funcExpect);
+
+		ByteString resultString = txnExt.getConstantResult(0);
+		if (resultString.size() != 192) {
+			return;
+		}
+
+		String result = Numeric.toHexString(resultString.toByteArray());
+
+		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
+
+		Address pair1 = (Address) list.get(0);
+		Address pair2 = (Address) list.get(1);
+//		inAmount = (Uint256) list.get(2);
+		Uint256 outAmount = (Uint256) list.get(2);
+		Uint256 k = (Uint256) list.get(3);
+		Uint256 x = (Uint256) list.get(4);
+
+		if (!outAmount.equals(Uint256.DEFAULT)) {
+			//front and back
+			BigInteger in = inAmount.getValue();
+			BigInteger out = outAmount.getValue();
+			Function funcFront = new Function("front", Arrays.asList(pair2, token, new Uint256(out.shiftLeft(112).add(in))), Collections.emptyList());
+
+			String encoded = FunctionEncoder.encode(funcFront);
+
+			Contract.TriggerSmartContract trigger =
+					Contract.TriggerSmartContract.newBuilder().setOwnerAddress(bsWalletAddress).setCallValue(1).setContractAddress(bsSunSwapRouterAddress).setData(ApiWrapper.parseHex(encoded)).build();
+
+			Transaction trx = callAndSignFront(trigger);
+			BroadcastWithHttp(trx);
+			apiWrapper.broadcastTransaction(trx);
+
+			Function funcBack = new Function("back", Arrays.asList(pair2, token,
+					new Uint256(in.add(BigInteger.ONE))), Collections.emptyList());
+
+			trx = apiWrapper.signTransaction(apiWrapper.triggerCall(sWalletHexAddress, sContractAddress, funcBack).setFeeLimit(lGasLimit).build());
+			apiWrapper.broadcastTransaction(trx);
+
+			ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
+			scheduler.schedule(() -> {
+				if (apiWrapper.getAccount(sContractAddress).getBalance() > 0) {
+					Function funcLiquidate = new Function("liquidate", Arrays.asList(pair1, pair2, token), Collections.emptyList());
+					Transaction trxLiquidate = apiWrapper.signTransaction(apiWrapper.triggerCall(sWalletHexAddress, sContractAddress, funcLiquidate).setFeeLimit(lGasLimit).build());
+					apiWrapper.broadcastTransaction(trxLiquidate);
+				}
+				scheduler.shutdown();
+			}, 3, TimeUnit.SECONDS);
+		}
+
+		if (!k.equals(Uint256.DEFAULT)) {
+			// arbitrage
+			Function runFuc = new Function("run1", Arrays.asList(pair1, pair2, token), Collections.emptyList());
+			Transaction trx = callAndSignBack(sContractAddress, runFuc);
+			BroadcastWithHttp(trx);
+		}
+	}
+
+	public void expect2(Address token0, Address token1, Uint256 amount, Uint256 flag) {
+
+		Uint256 limit = new Uint256(10 * 1000000);
+
+		Function funcExpect = new Function("expect2",
+				Arrays.asList(
+						token0,
+						token1,
+						limit,		// arbitrage limit
+						amount,	// victim amount
+						flag		// 0 : wtrx->token, 1 : token->wtrx, 0 : in expected, 2 : out expected
+				),
+				Arrays.asList(
+						new TypeReference<Address>() {},	// pair0
+						new TypeReference<Address>() {},	// pair1
+						new TypeReference<Address>() {},	// pair2
+						new TypeReference<Uint256>() {},	// k
+						new TypeReference<Uint256>() {}		// x
+				));
+
+		TransactionExtention txnExt = apiWrapper.constantCall(sWalletHexAddress, sContractAddress, funcExpect);
+
+		ByteString resultString = txnExt.getConstantResult(0);
+		if (resultString.size() != 160) {
+			return;
+		}
+
+		String result = Numeric.toHexString(resultString.toByteArray());
+
+		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
+
+		Address pair0 = (Address) list.get(0);
+		Address pair1 = (Address) list.get(1);
+		Address pair2 = (Address) list.get(2);
+		Uint256 k = (Uint256) list.get(3);
+		Uint256 x = (Uint256) list.get(4);
+
+		if (!k.equals(Uint256.DEFAULT)) {
+			// arbitrage
+			Function runFuc = new Function("run2", Arrays.asList(pair0, pair1, pair2, token0, token1, x), Collections.emptyList());
+			Transaction trx = callAndSignBack(sContractAddress, runFuc);
+			BroadcastWithHttp(trx);
+		}
 	}
 
 	@Async
@@ -574,6 +717,44 @@ public class ExecuteService {
 				long timestamp1 = System.currentTimeMillis();
 				boolean status = !future.isCompletedExceptionally();
 				String output = "Type: " + txExt.eType + " Index: " + txExt.nIndex + " Status: " + status + " " + key + " " + timestamp0 + " - " + timestamp1 + " = " + (timestamp1 - timestamp0) + "\n";
+				output += "Response: "+ response + "\n";
+				MyLogger.print(output);
+			});
+			futures.add(future);  // Add each asynchronous httpBroadcast call to the list
+		});
+
+		// Combine all futures and wait for them to complete
+		return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));  // Return null after all futures
+		// complete
+	}
+
+	@Async
+	public CompletableFuture<Void> BroadcastWithHttp(Transaction trx) {
+		String sHexRaw = Numeric.toHexString(trx.toByteArray());
+
+		ArrayList<CompletableFuture<ResponseBody>> futures = new ArrayList<>();
+
+		MediaType mediaType = MediaType.parse("application/json");
+		RequestBody body = RequestBody.create(mediaType, String.format("{\"transaction\":\"%s\"}", sHexRaw));
+
+		sUrls.forEach((String key, String[] value) -> {
+
+			Request.Builder builder = new Request.Builder();
+			builder.method("POST", body);
+			builder.addHeader("Content-Type", "application/json");
+			builder.addHeader("Accept", "application/json");
+
+			builder.url(value[0] + "/wallet/broadcasthex");
+			for (int j = 1; j < value.length; j += 2) {
+				builder.addHeader(value[j], value[j + 1]);
+			}
+			Request request = builder.build();
+			CompletableFuture<ResponseBody> future = httpBroadcast(request);
+			long timestamp0 = System.currentTimeMillis();
+			future.thenAccept(response -> {
+				long timestamp1 = System.currentTimeMillis();
+				boolean status = !future.isCompletedExceptionally();
+				String output = " Status: " + status + " " + key + " " + timestamp0 + " - " + timestamp1 + " = " + (timestamp1 - timestamp0) + "\n";
 				output += "Response: "+ response + "\n";
 				MyLogger.print(output);
 			});

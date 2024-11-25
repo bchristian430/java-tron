@@ -448,11 +448,11 @@ public class ExecuteService {
 //	)
 
 	@Async
-	public void expect1(Address token, Uint256 flag, Uint256 amount, Sha256Hash hashVictim) {
+	public void expect1(Address token, Uint256 amount, Uint256 flag, Sha256Hash hashVictim) {
 
 		Uint256 inAmount = new Uint256(1000 * 1000000);
 		Uint256 percent = new Uint256(8);
-		Uint256 limit = new Uint256(15 * 1000000);
+		Uint256 limit = new Uint256(1000000);
 
 		Function funcExpect = new Function("expect1",
 				Arrays.asList(
@@ -475,7 +475,7 @@ public class ExecuteService {
 		TransactionExtention txnExt = apiWrapper.constantCall(sWalletHexAddress, sContractAddress, funcExpect);
 
 		ByteString resultString = txnExt.getConstantResult(0);
-		if (resultString.size() != 192) {
+		if (resultString.size() != 160) {
 			return;
 		}
 
@@ -483,8 +483,8 @@ public class ExecuteService {
 
 		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
 
-		Address pair1 = new Address((Uint256)list.get(0));
-		Address pair2 = new Address((Uint256)list.get(1));
+		Address pair1 = (Address) list.get(0);
+		Address pair2 = (Address) list.get(1);
 //		inAmount = (Uint256) list.get(2);
 		Uint256 outAmount = (Uint256) list.get(2);
 		Uint256 k = (Uint256) list.get(3);
@@ -537,7 +537,7 @@ public class ExecuteService {
 			}, 3, TimeUnit.SECONDS);
 		}
 
-		if (!k.equals(Uint256.DEFAULT)) {
+		if (!k.equals(Uint256.DEFAULT) && !x.equals(Uint256.DEFAULT)) {
 			// arbitrage
 			Function runFuc = new Function("run1", Arrays.asList(pair1, pair2, token, x), Collections.emptyList());
 			Transaction trx = callAndSignBack(sContractAddress, runFuc);
@@ -551,7 +551,7 @@ public class ExecuteService {
 
 	public void expect2(Address token0, Address token1, Uint256 amount, Uint256 flag, Sha256Hash hashVictim) {
 
-		Uint256 limit = new Uint256(10 * 1000000);
+		Uint256 limit = new Uint256(1000000);
 
 		Function funcExpect = new Function("expect2",
 				Arrays.asList(
@@ -580,13 +580,13 @@ public class ExecuteService {
 
 		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
 
-		Address pair0 = new Address((Uint256)list.get(0));
-		Address pair1 = new Address((Uint256)list.get(1));
-		Address pair2 = new Address((Uint256)list.get(2));
+		Address pair0 = (Address) list.get(0);
+		Address pair1 = (Address) list.get(1);
+		Address pair2 = (Address) list.get(2);
 		Uint256 k = (Uint256) list.get(3);
 		Uint256 x = (Uint256) list.get(4);
 
-		if (!k.equals(Uint256.DEFAULT)) {
+		if (!k.equals(Uint256.DEFAULT) && !x.equals(Uint256.DEFAULT)) {
 			// arbitrage
 			Function runFuc = new Function("run2", Arrays.asList(pair0, pair1, pair2, token0, token1, x), Collections.emptyList());
 			Transaction trx = callAndSignBack(sContractAddress, runFuc);

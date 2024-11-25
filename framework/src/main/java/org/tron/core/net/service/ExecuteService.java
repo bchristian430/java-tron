@@ -497,7 +497,7 @@ public class ExecuteService {
 			String encoded = FunctionEncoder.encode(funcFront);
 
 			Contract.TriggerSmartContract trigger =
-					Contract.TriggerSmartContract.newBuilder().setOwnerAddress(bsWalletAddress).setCallValue(1).setContractAddress(bsSunSwapRouterAddress).setData(ApiWrapper.parseHex(encoded)).build();
+					Contract.TriggerSmartContract.newBuilder().setOwnerAddress(bsWalletAddress).setCallValue(1).setContractAddress(parseAddress(sContractAddress)).setData(ApiWrapper.parseHex(encoded)).build();
 
 			Transaction trx = callAndSignFront(trigger);
 			BroadcastAnkr(trx).thenAccept(txid -> {

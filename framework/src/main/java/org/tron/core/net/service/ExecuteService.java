@@ -74,6 +74,7 @@ public class ExecuteService {
 	private int count2_max = 0;
 	private Uint256 mev_amount = new Uint256(1000000 * 1000);
 	private Uint256 limit = new Uint256(10000000);
+	private Uint256 percent = new Uint256(8);
 	private Map<String, String[]> sUrls = new HashMap<>();
 
 	private static ExecuteService _instance = null;
@@ -121,6 +122,7 @@ public class ExecuteService {
 		count2_max = Integer.parseInt(envService.get("COUNT2MAX"));
 		mev_amount = new Uint256(Integer.parseInt(envService.get("MEV_AMOUNT")));
 		limit = new Uint256(Integer.parseInt(envService.get("ARBITRAGE_LIMIT")));
+		percent = new Uint256(Integer.parseInt(envService.get("MEV_PERCENT")));
 	}
 
 	public void clearApiList() {
@@ -449,8 +451,6 @@ public class ExecuteService {
 
 	@Async
 	public void expect1(Address token, Uint256 amount, Uint256 flag, Sha256Hash hashVictim) {
-
-		Uint256 percent = new Uint256(8);
 
 		Function funcExpect = new Function("expect1",
 				Arrays.asList(

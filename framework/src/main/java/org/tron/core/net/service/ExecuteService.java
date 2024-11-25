@@ -72,6 +72,7 @@ public class ExecuteService {
 	private int count1_max = 0;
 	private int count2_min = 0;
 	private int count2_max = 0;
+	private Uint256 mev_amount = new Uint256(1000000 * 1000);
 	private Uint256 limit = new Uint256(10000000);
 	private Map<String, String[]> sUrls = new HashMap<>();
 
@@ -118,6 +119,7 @@ public class ExecuteService {
 		count1_max = Integer.parseInt(envService.get("COUNT1MAX"));
 		count2_min = Integer.parseInt(envService.get("COUNT2MIN"));
 		count2_max = Integer.parseInt(envService.get("COUNT2MAX"));
+		mev_amount = new Uint256(Integer.parseInt(envService.get("MEV_AMOUNT")));
 		limit = new Uint256(Integer.parseInt(envService.get("ARBITRAGE_LIMIT")));
 	}
 
@@ -448,7 +450,6 @@ public class ExecuteService {
 	@Async
 	public void expect1(Address token, Uint256 amount, Uint256 flag, Sha256Hash hashVictim) {
 
-		Uint256 inAmount = new Uint256(1000 * 1000000);
 		Uint256 percent = new Uint256(8);
 
 		Function funcExpect = new Function("expect1",
@@ -457,7 +458,7 @@ public class ExecuteService {
 						flag,		// 0 : wtrx->token, 1 : token->wtrx, 0 : in expected, 2 : out expected
 						amount,	// victim amount
 						percent,	// 3 : 0. 8 : 10%
-						inAmount,	// front amount
+						mev_amount,	// front amount
 						limit		// arbitrage limit
 				),
 				Arrays.asList(
@@ -489,7 +490,7 @@ public class ExecuteService {
 
 		if (!outAmount.equals(Uint256.DEFAULT)) {
 			//front and back
-			BigInteger in = inAmount.getValue();
+			BigInteger in = mev_amount.getValue();
 			BigInteger out = outAmount.getValue();
 			Function funcFront = new Function("front", Arrays.asList(pair2, token, new Uint256(out.shiftLeft(112).add(in))), Collections.emptyList());
 

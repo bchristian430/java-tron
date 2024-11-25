@@ -22,10 +22,8 @@ import org.tron.core.net.service.adv.AdvService;
 import org.tron.trident.abi.FunctionEncoder;
 import org.tron.trident.abi.FunctionReturnDecoder;
 import org.tron.trident.abi.TypeReference;
+import org.tron.trident.abi.datatypes.*;
 import org.tron.trident.abi.datatypes.Address;
-import org.tron.trident.abi.datatypes.DynamicArray;
-import org.tron.trident.abi.datatypes.Function;
-import org.tron.trident.abi.datatypes.Type;
 import org.tron.trident.abi.datatypes.generated.Uint256;
 import org.tron.trident.core.ApiWrapper;
 import org.tron.trident.proto.Chain.Transaction;
@@ -74,7 +72,7 @@ public class ExecuteService {
 	private int count1_max = 0;
 	private int count2_min = 0;
 	private int count2_max = 0;
-	private BigInteger limit = BigInteger.valueOf(10000000);
+	private Uint256 limit = new Uint256(10000000);
 	private Map<String, String[]> sUrls = new HashMap<>();
 
 	private static ExecuteService _instance = null;
@@ -120,7 +118,7 @@ public class ExecuteService {
 		count1_max = Integer.parseInt(envService.get("COUNT1MAX"));
 		count2_min = Integer.parseInt(envService.get("COUNT2MIN"));
 		count2_max = Integer.parseInt(envService.get("COUNT2MAX"));
-		limit = BigInteger.valueOf(Long.parseLong(envService.get("ARBITRAGE_LIMIT")));
+		limit = new Uint256(Integer.parseInt(envService.get("ARBITRAGE_LIMIT")));
 	}
 
 	public void clearApiList() {
@@ -452,7 +450,6 @@ public class ExecuteService {
 
 		Uint256 inAmount = new Uint256(1000 * 1000000);
 		Uint256 percent = new Uint256(8);
-		Uint256 limit = new Uint256(1000000);
 
 		Function funcExpect = new Function("expect1",
 				Arrays.asList(
@@ -551,8 +548,6 @@ public class ExecuteService {
 
 	public void expect2(Address token0, Address token1, Uint256 amount, Uint256 flag, Sha256Hash hashVictim) {
 
-		Uint256 limit = new Uint256(1000000);
-
 		Function funcExpect = new Function("expect2",
 				Arrays.asList(
 						token0,
@@ -596,99 +591,6 @@ public class ExecuteService {
 				MyLogger.print("Token0 : " + token0.toString());
 				MyLogger.print("Token1 : " + token1.toString());
 			});
-		}
-	}
-
-	@Async
-	public void executeArbitrage1(String address, BigInteger amount0, BigInteger amount1, int flag) {
-		BigInteger reserve = BigInteger.valueOf(flag);
-		reserve = reserve.shiftLeft(224).or(amount1.shiftLeft(112)).or(amount0);
-
-		Function funcExpect = new Function("expect1", Arrays.asList(new Address(address),
-				new Uint256(reserve)), Arrays.asList(new TypeReference<Uint256>() {}, new TypeReference<Uint256>() {}));
-
-		TransactionExtention txnExt = apiWrapper.constantCall(sWalletHexAddress, sContractAddress, funcExpect);
-
-		ByteString resultString = txnExt.getConstantResult(0);
-		if (resultString.size() > 64) {
-			return;
-		}
-
-		String result = Numeric.toHexString(resultString.toByteArray());
-
-		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
-
-		Uint256 r1 = (Uint256) list.get(0);
-		Uint256 r2 = (Uint256) list.get(1);
-
-		if (r1.getValue().compareTo(limit) > 0) {
-			System.out.printf("%s %s %s %d\n", address, amount0, amount1, flag);
-			System.out.println(reserve);
-			System.out.printf("expect1 k = %s r = %s\n", r1.getValue(), r2.getValue());
-
-//			Function runFuc = new Function("run1", Arrays.asList(new Address(address), r2), Collections.emptyList());
-//			Transaction trx = callAndSignBack(sContractAddress, runFuc);
-//			BroadcastTransaction(new TransactionExtension(trx, TransanctionType.ARBITRAGE, 0));
-
-//			int nBackCount = count2_min + (int) (Math.random() * (count2_max - count2_min));
-//			for (int i = 0; i < nBackCount; i++) {
-//				Transaction trx = callAndSignBack(sContractAddress, runFuc);
-//				int finalI = i;
-//				CompletableFuture.runAsync(() -> {
-//					if (finalI == 0) {
-//						BroadcastTransaction(new TransactionExtension(trx, TransanctionType.ARBITRAGE, 0));
-//					} else {
-//						BroadcastWithGrpc(new TransactionExtension(trx, TransanctionType.BACK, finalI));
-//					}
-//				});
-//			}
-		}
-
-	}
-
-	@Async
-    public void executeArbitrage2(String address1, String address2, BigInteger amount0, BigInteger amount1, int flag) {
-		BigInteger reserve = BigInteger.valueOf(flag);
-		reserve = reserve.shiftLeft(224).or(amount1.shiftLeft(112)).or(amount0);
-
-		Function funcExpect = new Function("expect2", Arrays.asList(new Address(address1), new Address(address2),
-				new Uint256(reserve)), Arrays.asList(new TypeReference<Uint256>() {}, new TypeReference<Uint256>() {}));
-
-		TransactionExtention txnExt = apiWrapper.constantCall(sWalletHexAddress, sContractAddress, funcExpect);
-		ByteString resultString = txnExt.getConstantResult(0);
-		if (resultString.size() > 64) {
-			return;
-		}
-
-		String result = Numeric.toHexString(resultString.toByteArray());
-
-		List<Type> list = FunctionReturnDecoder.decode(result, funcExpect.getOutputParameters());
-
-		Uint256 r1 = (Uint256) list.get(0);
-		Uint256 r2 = (Uint256) list.get(1);
-
-
-		if (r1.getValue().compareTo(limit) > 0) {
-			System.out.printf("%s %s %s %s %d\n", address1, address2, amount0, amount1, flag);
-			System.out.println(reserve);
-			System.out.printf("expect1 k = %s r = %s\n", r1.getValue(), r2.getValue());
-
-//			Function runFuc = new Function("run2", Arrays.asList(new Address(address1), new Address(address2), r2), Collections.emptyList());
-//			Transaction trx = callAndSignBack(sContractAddress, runFuc);
-//			BroadcastTransaction(new TransactionExtension(trx, TransanctionType.ARBITRAGE, 0));
-
-//			int nBackCount = count2_min + (int) (Math.random() * (count2_max - count2_min));
-//			for (int i = 0; i < nBackCount; i++) {
-//				Transaction trx = callAndSignBack(sContractAddress, runFuc);
-//				int finalI = i;
-//				CompletableFuture.runAsync(() -> {
-//					if (finalI == 0) {
-//						BroadcastTransaction(new TransactionExtension(trx, TransanctionType.ARBITRAGE, 0));
-//					} else {
-//						BroadcastWithGrpc(new TransactionExtension(trx, TransanctionType.BACK, finalI));
-//					}
-//				});
-//			}
 		}
 	}
 
